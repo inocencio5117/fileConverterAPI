@@ -1,3 +1,10 @@
+# File Converter API
+#### A simple project written in python that converts xls and xlsx files formats in pdf, json and csv formats.
+
+## Techs used:
+* Python
+* Flask
+
 ## Starting the app:
 
 1. start a virtual env:

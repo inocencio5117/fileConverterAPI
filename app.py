@@ -1,6 +1,5 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 import pandas as pd
-import os
 import pdfkit
 from werkzeug.utils import secure_filename
 
@@ -12,69 +11,42 @@ ALLOWED_EXTENSIONS = {'xls', 'xlsx'}
 def health_check():
     return jsonify({"messge": "API is healthy!"})
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    file = request.files['sample']
-    if file and allowed_file(file.filename):
-        # Save the file to a temporary location
-        file_path = os.path.join('/tmp', file.filename)
-        file.save(file_path)
-        return jsonify({"message": "File uploaded successfully.", "file_path": file_path})
-    else:
-        return jsonify({"error": "Invalid file format."}), 400
-
 @app.route('/check_file', methods=['POST'])
 def check_file():
-    file = request.files['sample']
+    file = request.files['file']
+    format_type = request.form.get('format_type', 'csv').lower()
     if file and allowed_file(file.filename):
-        return jsonify({"message": "the file sent is valid to convertion"})
+        return jsonify({"message": "The file sent is valid to convertion", "format_type": format_type})
     else:
         return jsonify({"error": "Invalid file path"}), 400
 
-@app.route('/convert/csv', methods=['POST'])
-def convert_to_csv():
-    file_path = request.json.get('file_path')
-    if not file_path or not os.path.exists(file_path):
-        return jsonify({"error": "Invalid file path."}), 400
+@app.route('/convert', methods=['POST'])
+def convert():
+    file = request.files['file']
+    if file and allowed_file(file.filename):
+        format_type = request.form.get('format_type', 'csv').lower()
+        file.seek(0)
+        converted_data, contetent_type = convert_and_respond(file, format_type)
+        return Response(response=converted_data, status=200, mimetype=contetent_type)
+    else:
+        return jsonify({"error": "Invalid file format."}), 400
 
-    # Read Excel data
-    df = pd.read_excel(file_path)
+def convert_and_respond(file, format_type):
+    df = pd.read_excel(file)
 
-    # Convert to CSV
-    csv_path = os.path.splitext(file_path)[0] + '.csv'
-    df.to_csv(csv_path, index=False)
+    if format_type == 'csv':
+        converted_data = df.to_csv(index=False)
+        content_type = 'text/csv'
+    elif format_type == 'json':
+        converted_data = df.to_json(orient='records')
+        content_type = 'application/json'
+    elif format_type == 'pdf':
+        converted_data = pdfkit.from_string(df.to_html(index=False), False)
+        content_type = 'application/pdf'
+    else:
+        return jsonify({"error": "Invalid format_type. Supported types: csv, json, pdf"}), 400
 
-    return jsonify({"message": "File converted to CSV.", "converted_file": csv_path})
-
-@app.route('/convert/json', methods=['POST'])
-def convert_to_json():
-    file_path = request.json.get('file_path')
-    if not file_path or not os.path.exists(file_path):
-        return jsonify({"error": "Invalid file path."}), 400
-
-    # Read Excel data
-    df = pd.read_excel(file_path)
-
-    # Convert to JSON
-    json_path = os.path.splitext(file_path)[0] + '.json'
-    df.to_json(json_path, orient='records')
-
-    return jsonify({"message": "File converted to JSON.", "converted_file": json_path})
-
-@app.route('/convert/pdf', methods=['POST'])
-def convert_to_pdf():
-    file_path = request.json.get('file_path')
-    if not file_path or not os.path.exists(file_path):
-        return jsonify({"error": "Invalid file path."}), 400
-
-    # Read Excel data
-    df = pd.read_excel(file_path)
-
-    # Convert to PDF
-    pdf_path = os.path.splitext(file_path)[0] + '.pdf'
-    pdfkit.from_file(file_path, pdf_path)
-
-    return jsonify({"message": "File converted to PDF.", "converted_file ": pdf_path})
+    return converted_data, content_type
 
 def allowed_file(filename):
     return '.' in filename and \
